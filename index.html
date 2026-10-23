@@ -1,0 +1,1032 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Car Control — How Cars Really Move</title>
+<style>
+:root{
+  --bg:#0b0e13; --panel:#141922; --panel2:#1b2230; --line:#26303f;
+  --txt:#e8eef6; --dim:#93a2b8; --accent:#ff5c39; --accent2:#37c2ff;
+  --good:#3ddc84; --warn:#ffc857; --bad:#ff4d6d;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--txt);
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+h1,h2,h3{line-height:1.2;margin:0 0 .5em}
+h1{font-size:clamp(28px,4vw,46px);letter-spacing:-.02em}
+h2{font-size:clamp(22px,2.6vw,32px);letter-spacing:-.01em}
+h3{font-size:18px;color:var(--accent2);margin-top:1.6em}
+p{margin:0 0 1em}
+a{color:var(--accent2)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+
+/* top bar */
+.top{position:sticky;top:0;z-index:50;background:rgba(11,14,19,.92);
+  border-bottom:1px solid var(--line);backdrop-filter:blur(10px)}
+.top .wrap{display:flex;align-items:center;gap:16px;height:60px}
+.brand{font-weight:800;letter-spacing:.14em;font-size:12px;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+.bar{flex:1;height:5px;background:#222b38;border-radius:99px;overflow:hidden}
+.bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .4s}
+.pct{font-variant-numeric:tabular-nums;font-size:12px;color:var(--dim);min-width:38px;text-align:right}
+
+/* layout */
+.layout{display:grid;grid-template-columns:236px 1fr;gap:0;max-width:1180px;margin:0 auto}
+nav{position:sticky;top:60px;align-self:start;height:calc(100vh - 60px);overflow-y:auto;
+  padding:22px 14px 60px;border-right:1px solid var(--line)}
+nav button{display:block;width:100%;text-align:left;background:none;border:0;color:var(--dim);
+  padding:9px 12px;border-radius:9px;font:inherit;font-size:13.5px;cursor:pointer;margin-bottom:2px;
+  border-left:2px solid transparent}
+nav button:hover{background:var(--panel);color:var(--txt)}
+nav button.on{background:var(--panel2);color:#fff;border-left-color:var(--accent)}
+nav button.done::after{content:"✓";float:right;color:var(--good);font-size:12px}
+main{padding:40px 34px 140px;min-width:0}
+section{display:none;animation:fade .35s ease}
+section.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.lede{font-size:18px;color:var(--dim);max-width:64ch;margin-bottom:2em}
+.tag{display:inline-block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);border:1px solid #4a2a22;background:#22140f;padding:4px 9px;border-radius:99px;margin-bottom:14px}
+
+/* cards */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;margin:0 0 20px}
+.card.play{border-color:#2d3a4d;background:linear-gradient(180deg,#151b26,#11161f)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:820px){
+  .layout{grid-template-columns:1fr}
+  nav{display:none}
+  main{padding:26px 18px 100px}
+  .grid2{grid-template-columns:1fr}
+}
+.kicker{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
+.big{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.unit{font-size:14px;color:var(--dim);font-weight:500}
+.muted{color:var(--dim)}
+ul,ol{margin:0 0 1em;padding-left:22px}
+li{margin-bottom:.45em}
+.key{background:#1f2836;border:1px solid #34414f;border-bottom-width:2px;border-radius:6px;
+  padding:1px 7px;font:600 13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#cfe0f5}
+.note{border-left:3px solid var(--accent2);background:#101a24;padding:14px 18px;border-radius:0 10px 10px 0;margin:1.2em 0}
+.warnbox{border-left:3px solid var(--warn);background:#221c0e;padding:14px 18px;border-radius:0 10px 10px 0;margin:1.2em 0}
+
+/* controls */
+label.ctrl{display:block;margin:14px 0 6px;font-size:13px;color:var(--dim);letter-spacing:.03em}
+label.ctrl b{color:var(--txt);font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;width:100%;height:22px;background:none;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:5px;background:#2a3444;border-radius:99px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+  background:var(--accent);margin-top:-6.5px;box-shadow:0 0 0 4px rgba(255,92,57,.15)}
+input[type=range]::-moz-range-track{height:5px;background:#2a3444;border-radius:99px}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border:0;border-radius:50%;background:var(--accent)}
+canvas{display:block;width:100%;height:auto;border-radius:12px;background:#0a0d12;border:1px solid var(--line)}
+button.act{background:var(--accent);color:#180a06;border:0;border-radius:10px;padding:11px 18px;
+  font:700 14px/1 inherit;cursor:pointer;letter-spacing:.02em}
+button.act:hover{filter:brightness(1.08)}
+button.ghost{background:#1d2634;color:var(--txt);border:1px solid #33415a}
+.pill{display:inline-block;padding:5px 11px;border-radius:99px;font-size:12px;font-weight:700;letter-spacing:.04em}
+.pill.ok{background:#0f2b1c;color:var(--good);border:1px solid #1e5c3a}
+.pill.no{background:#2b1015;color:var(--bad);border:1px solid #5c2030}
+
+/* quiz */
+.q{border-top:1px solid var(--line);padding:20px 0}
+.q:first-child{border-top:0}
+.q p{font-weight:600;margin-bottom:12px}
+.opt{display:block;width:100%;text-align:left;background:#1a2130;border:1px solid #2b3648;
+  color:var(--txt);padding:12px 14px;border-radius:10px;margin-bottom:8px;font:inherit;font-size:14.5px;cursor:pointer;transition:.15s}
+.opt:hover{border-color:#4a5b73;background:#212a3a}
+.opt.right{background:#10301f;border-color:#2f7d52;color:#a8f0c6}
+.opt.wrong{background:#301318;border-color:#7d2f3f;color:#ffb3c1}
+.opt:disabled{cursor:default}
+.exp{font-size:13.5px;color:var(--dim);margin-top:8px;padding-left:2px}
+footer{border-top:1px solid var(--line);color:var(--dim);font-size:12.5px;padding:26px 0 60px}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="wrap">
+    <div class="brand">Car Control</div>
+    <div class="bar"><i id="prog"></i></div>
+    <div class="pct" id="progpct">0%</div>
+  </div>
+</div>
+
+<div class="layout">
+  <nav id="nav"></nav>
+  <main id="main">
+
+  <!-- ============ 1. START ============ -->
+  <section data-title="Start here">
+    <span class="tag">Foundation</span>
+    <h1>How a car really turns, stops and slides</h1>
+    <p class="lede">Everything in driving comes down to one thing: <b>how much grip each tyre has, and what you spend it on.</b> This page teaches that, then builds up to drifting and rally pace. Plain language, interactive toys, no fluff.</p>
+
+    <div class="card">
+      <h3 style="margin-top:0">The one idea behind all of it</h3>
+      <p>A tyre can only push so hard before it slides. Picture a rubber band stretched between the tyre and the road. It can pull forward (acceleration), backward (braking), or sideways (turning) — but the total pull has a limit. Spend it all on braking and there is nothing left for turning. That single rule explains understeer, trail braking, drifting and why rally drivers look like they are out of control.</p>
+      <div class="note">
+        <b>How to use this page.</b> Work through the tabs in order. Each module ends with something you can actually play with. The games are not decoration — move the sliders and watch the numbers change; that is where the understanding sticks.
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="kicker">You will learn</div>
+        <ul style="margin-bottom:0">
+          <li>Where the weight goes when you brake, accelerate and steer</li>
+          <li>Why you cannot brake at 100% and steer at 100% at once</li>
+          <li>Threshold braking, brake release, trail braking</li>
+          <li>Understeer, oversteer, slip angle, catching a slide</li>
+          <li>How to start, hold and end a drift</li>
+          <li>Rally techniques: left-foot braking, Scandi flick, handbrake turn, pace notes</li>
+          <li>A practice plan that works in a car park or a simulator</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="kicker">Ground rules</div>
+        <p style="margin-bottom:.6em">Nothing here is a licence to drive fast on public roads. Every technique below belongs on a track, a closed course, or a simulator.</p>
+        <p style="margin-bottom:0" class="muted">If you want real seat time, look for a skid pan or car-control course. Two hours on a wet skid pan teaches more than two years of normal driving.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. GRIP ============ -->
+  <section data-title="1 · Grip, load & tyres">
+    <span class="tag">Module 1</span>
+    <h2>Grip is not magic — it is pressure</h2>
+    <p class="lede">A tyre makes grip by squashing rubber into the road. More vertical load = more grip. But there is a catch that shapes every driving technique.</p>
+
+    <div class="card">
+      <h3>Contact patch</h3>
+      <p>Only about the size of your hand touches the road, per tyre. On a 1,300&nbsp;kg car that is roughly 325&nbsp;kg pressing through each palm-sized patch. The rubber deforms into the road's tiny bumps and the friction between them holds you on.</p>
+
+      <h3>Load sensitivity — the important quirk</h3>
+      <p>If you double the weight on a tyre, you do <b>not</b> double its grip. You get maybe 1.8×. This is called <i>load sensitivity</i>, and it is why weight transfer matters so much: the outside tyre in a corner gains less grip than the inside tyre loses. Total grip drops. Heavy cars, tall cars and badly loaded cars corner worse for exactly this reason.</p>
+
+      <h3>Slip angle — the tyre works while sliding</h3>
+      <p>A tyre does not need to be sliding to turn, but it does need to be at a small angle to the direction it is travelling. That angle is the <b>slip angle</b>. Grip builds with slip angle, peaks somewhere around 6–10°, then falls away. Past the peak you are sliding — still with grip, but less of it, and now you need skill instead of steering lock.</p>
+      <div class="note"><b>Remember this number.</b> Peak grip happens at a small slide, not zero slide. That is why racing drivers are always slightly sideways, and why a car that feels "on rails" is usually not going as fast as it could.</div>
+
+      <h3>What changes grip</h3>
+      <ul style="margin-bottom:0">
+        <li><b>Surface</b> — tarmac &gt; dry concrete &gt; wet tarmac &gt; gravel &gt; snow &gt; ice. Wet drops grip 20–40%, gravel to roughly half, ice to a tenth.</li>
+        <li><b>Tyre</b> — compound, temperature, and pressure. Cold or over-inflated tyres give away grip before you notice.</li>
+        <li><b>Load</b> — more load, more grip, but with diminishing returns.</li>
+        <li><b>Contamination</b> — dust, leaves, oil, standing water. The first lap after rain starts is the slipiest surface in motorsport.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ 3. WEIGHT TRANSFER ============ -->
+  <section data-title="2 · Weight transfer">
+    <span class="tag">Module 2 · Interactive</span>
+    <h2>Where the weight goes</h2>
+    <p class="lede">The car's mass does not move — the <i>load on each tyre</i> does. Brake and the nose dives: load moves forward. Accelerate and it squats: load moves back. Turn and it rolls: load moves to the outside.</p>
+
+    <div class="card play">
+      <div class="kicker">Play with it</div>
+      <div class="grid2" style="grid-template-columns:1.15fr .85fr;align-items:center">
+        <div><canvas id="wtCanvas" width="640" height="420"></canvas></div>
+        <div>
+          <label class="ctrl">Accelerate / brake <b id="wtLongLbl">0.00 g</b></label>
+          <input type="range" id="wtLong" min="-1.1" max="0.8" step="0.01" value="0">
+          <label class="ctrl">Cornering <b id="wtLatLbl">0.00 g</b></label>
+          <input type="range" id="wtLat" min="-1.1" max="1.1" step="0.01" value="0">
+          <label class="ctrl">Car height <b id="wtHLbl">0.55 m</b></label>
+          <input type="range" id="wtH" min="0.35" max="0.85" step="0.01" value="0.55">
+          <div style="margin-top:18px;font-size:13.5px;color:var(--dim);line-height:1.7">
+            Front axle: <b id="wtFront" style="color:var(--txt)">50%</b><br>
+            Rear axle: <b id="wtRear" style="color:var(--txt)">50%</b><br>
+            Outside grip lost: <b id="wtLoss" style="color:var(--warn)">0%</b>
+          </div>
+        </div>
+      </div>
+      <p class="muted" style="margin:14px 0 0;font-size:13.5px">Red bar = load on that tyre. Watch the inside-front tyre go light when you brake and turn at the same time — that is the tyre that locks first and the one that starts a spin.</p>
+    </div>
+
+    <div class="card">
+      <h3>Longitudinal transfer (braking and accelerating)</h3>
+      <p>Under braking, load shifts forward in proportion to how hard you brake and how high the centre of gravity is. A 0.5&nbsp;g stop on a normal road car moves roughly 8–10% of the car's weight onto the front axle. Under hard braking a front-engined car can carry 75–80% of its weight on the front tyres.</p>
+      <p><b>Consequences you feel:</b> the nose dives, the rear goes light, the front tyres get more grip than the rears, and the car wants to rotate. That last effect is not a bug — it is how trail braking and rally driving work.</p>
+
+      <h3>Lateral transfer (cornering)</h3>
+      <p>In a corner, load moves to the outside wheels. Roll stiffness decides how it splits front to rear: a stiff front bar sends more load to the outside front, which unloads the inside front and pushes the car toward <b>understeer</b>. Stiffen the rear and you get <b>oversteer</b>. This is the single biggest handling tuning lever on any car.</p>
+
+      <h3>Why load sensitivity makes this bite</h3>
+      <p>The outside tyre gains grip with the extra load, but at a diminishing rate. The inside tyre loses grip almost linearly. Net result: the pair together produces <i>less</i> grip than when the load was even. That is why a lower, wider, well-suspended car grips better — it transfers less load for the same cornering force.</p>
+      <div class="note"><b>Practical takeaway.</b> Smooth is fast because smooth inputs transfer load gently. A jerky brake-then-turn produces a big, sudden transfer, the tyre goes past its peak slip angle, and you get understeer or a snap of oversteer instead of grip.</div>
+    </div>
+  </section>
+
+  <!-- ============ 4. TRACTION CIRCLE ============ -->
+  <section data-title="3 · Traction circle">
+    <span class="tag">Module 3 · Interactive</span>
+    <h2>The friction circle</h2>
+    <p class="lede">Draw a circle. Its radius is your total grip on that tyre. Braking force and cornering force both have to fit inside it. Spend all of one and there is none left for the other.</p>
+
+    <div class="card play">
+      <div class="kicker">Spend your grip</div>
+      <div class="grid2" style="grid-template-columns:1.1fr .9fr;align-items:center">
+        <div><canvas id="tcCanvas" width="520" height="520"></canvas></div>
+        <div>
+          <label class="ctrl">Braking <b id="tcBLbl">0%</b></label>
+          <input type="range" id="tcBrake" min="0" max="100" step="1" value="0">
+          <label class="ctrl">Steering / cornering <b id="tcSLbl">0%</b></label>
+          <input type="range" id="tcSteer" min="0" max="100" step="1" value="0">
+          <label class="ctrl">Surface grip <b id="tcMuLbl">1.00 μ</b></label>
+          <input type="range" id="tcMu" min="0.25" max="1.4" step="0.01" value="1">
+          <div style="margin-top:16px"><span id="tcPill" class="pill ok">Inside the circle</span></div>
+          <p id="tcMsg" class="muted" style="font-size:13.5px;margin-top:12px">Grip used: 0%.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Reading it</h3>
+      <p>The vertical axis is braking (down) and acceleration (up). The horizontal axis is cornering, left or right. Any combination that lands inside the circle is available to you. Outside means the tyre is sliding — you have asked for more than it can give, and the extra input does nothing except heat and destroy rubber.</p>
+
+      <h3>The three useful positions</h3>
+      <ul>
+        <li><b>Straight-line braking:</b> 100% brake, 0% steering. Fastest way to lose speed, but you cannot turn at all.</li>
+        <li><b>Pure cornering:</b> 0% brake, 100% turn. The car is stable but you are not slowing.</li>
+        <li><b>Trail braking:</b> braking lightens as steering builds — you walk around the edge of the circle from bottom to side. This is the fastest way through most corners, and it feels completely different from braking in a straight line then turning.</li>
+      </ul>
+
+      <h3>Why rallies look different</h3>
+      <p>On gravel the circle is much smaller and the edges are blurrier. Drivers deliberately go past the peak to use the loose surface itself as a brake, and they rotate the car early because they cannot steer while braking hard. Watch a rally driver: the car is rotated before the apex, then throttle and steering work together on the way out.</p>
+      <div class="note"><b>Rule of thumb.</b> If the car is not turning enough, the answer is almost always <i>less</i> input, not more. Past the peak, more steering lock makes understeer worse.</div>
+    </div>
+  </section>
+
+  <!-- ============ 5. BRAKING ============ -->
+  <section data-title="4 · Braking">
+    <span class="tag">Module 4 · Interactive</span>
+    <h2>Stopping: the part everyone gets wrong</h2>
+    <p class="lede">Most drivers brake too early, too gently, and release too late. Real braking is one hard application at peak grip, then a smooth release that hands the grip over to steering.</p>
+
+    <div class="card play">
+      <div class="kicker">Stopping distance</div>
+      <div class="grid2" style="grid-template-columns:1fr 1fr;align-items:start">
+        <div>
+          <label class="ctrl">Speed <b id="bdSpeedLbl">50 mph</b></label>
+          <input type="range" id="bdSpeed" min="10" max="120" step="1" value="50">
+          <label class="ctrl">Reaction time <b id="bdReactLbl">0.80 s</b></label>
+          <input type="range" id="bdReact" min="0.3" max="2.0" step="0.05" value="0.8">
+          <label class="ctrl">Surface <b id="bdMuLbl">Dry tarmac (0.90)</b></label>
+          <input type="range" id="bdMu" min="0" max="4" step="1" value="0">
+        </div>
+        <div>
+          <div class="kicker">Total stopping distance</div>
+          <div class="big"><span id="bdTotal">—</span> <span class="unit">m</span></div>
+          <p class="muted" style="font-size:13.5px;margin-top:10px">
+            Thinking: <b id="bdThink" style="color:var(--txt)">—</b> m<br>
+            Braking: <b id="bdBrake" style="color:var(--txt)">—</b> m<br>
+            At 30 mph the same stop is <b id="bdRef" style="color:var(--txt)">—</b> m
+          </p>
+          <p class="muted" style="font-size:13px;margin-top:14px">Distance grows with the <i>square</i> of speed. Double your speed, roughly quadruple your braking distance.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Threshold braking</h3>
+      <p>Brake as hard as the tyres allow without locking (or without ABS cycling). On a car with ABS, that is simply standing on the pedal — the system does the thresholding for you. Without ABS, you feel for the point just before lockup and hold it there. Locked wheels give you roughly 70–80% of peak grip and you lose all steering.</p>
+
+      <h3>Brake release — the skill nobody practises</h3>
+      <p>The end of braking matters as much as the start. If you jump off the pedal, the load snaps off the front tyres and the nose lifts; the front loses grip exactly when you want to turn. Release progressively over the last few metres. Your foot should be trailing off as your hands add steering.</p>
+
+      <h3>Trail braking</h3>
+      <p>Carry light brake pressure into the corner and bleed it off as steering lock builds. Three things happen at once: the front tyres stay loaded (so they turn better), the rear goes light (so the car rotates), and the total grip demand stays near the limit. It is the standard technique for every quick corner in every form of motorsport.</p>
+      <div class="warnbox"><b>Where it goes wrong.</b> Trail braking too much, too late, in a rear-drive car with the rear already light — you get a spin that starts as understeer and snaps. Learn it on a wet skid pan or in a simulator, not on a road.</div>
+
+      <h3>What ABS does and does not do</h3>
+      <p>ABS keeps the wheels turning so you can steer while braking at maximum. It does not shorten stopping distance on gravel or fresh snow — a locked wheel builds a wedge of material that actually stops you faster there. That is why rally cars and off-roaders have a lockable or defeatable ABS.</p>
+    </div>
+  </section>
+
+  <!-- ============ 6. STEERING & SLIP ============ -->
+  <section data-title="5 · Steering & slides">
+    <span class="tag">Module 5 · Interactive</span>
+    <h2>Understeer, oversteer, and the slide in between</h2>
+    <p class="lede">Every cornering problem is a question of which end runs out of grip first. Front first: understeer, you go straight. Rear first: oversteer, the back steps out.</p>
+
+    <div class="card play">
+      <div class="kicker">Balance simulator</div>
+      <div class="grid2" style="grid-template-columns:1fr 1fr;align-items:center">
+        <div><canvas id="usCanvas" width="620" height="360"></canvas></div>
+        <div>
+          <label class="ctrl">Corner speed <b id="usSpeedLbl">60 km/h</b></label>
+          <input type="range" id="usSpeed" min="20" max="140" step="1" value="60">
+          <label class="ctrl">Corner radius <b id="usRadLbl">30 m</b></label>
+          <input type="range" id="usRad" min="10" max="120" step="1" value="30">
+          <label class="ctrl">Rear grip vs front <b id="usBalLbl">Neutral</b></label>
+          <input type="range" id="usBal" min="-1" max="1" step="0.05" value="0">
+          <div style="margin-top:16px"><span id="usPill" class="pill ok">Neutral</span></div>
+          <p id="usMsg" class="muted" style="font-size:13.5px;margin-top:12px">Lateral demand 0.94 g.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Slip angle, again</h3>
+      <p>The difference between where the car points and where it is actually going is the <b>body slip angle</b>. Small angles (up to ~10°) are normal and fast. Large angles mean you are sliding — recoverable if you act early, a spin if you do not.</p>
+
+      <h3>Understeer</h3>
+      <p>The front tyres are at their limit, so the car keeps going wide no matter how much you turn. The steering goes light and vague. <b>The fix is to reduce demand:</b> unwind a little steering, ease off the brake or throttle, get the front tyres back under their peak slip angle. Adding lock makes it worse — the tyre is already past peak and more angle just adds heat.</p>
+
+      <h3>Oversteer</h3>
+      <p>The rear tyres let go first and the back swings out. Now the car is rotating faster than your steering input asks for. <b>The fix is to match the rotation:</b> steer into the slide (countersteer) so the front wheels point where you actually want to go, and be gentle with the throttle — lifting suddenly on a rear-drive car shifts load forward and can turn a slide into a spin.</p>
+
+      <h3>Catching a slide — the sequence</h3>
+      <ol>
+        <li><b>Feel it</b> in the seat and the steering weight before you see it.</li>
+        <li><b>Countersteer</b> fast and slightly more than you think — the car needs the front wheels pointed down the road.</li>
+        <li><b>Hold the throttle</b> steady. Do not stab it, do not snap off it.</li>
+        <li><b>Unwind</b> as the car comes back, so you do not overshoot into a slide the other way.</li>
+      </ol>
+      <div class="note"><b>The counterintuitive bit.</b> The best slide-catchers are looking far ahead and are already unwinding before the car is straight. Reaction time is the whole game.</div>
+    </div>
+  </section>
+
+  <!-- ============ 7. DRIFT ============ -->
+  <section data-title="6 · Drifting">
+    <span class="tag">Module 6 · Simulator</span>
+    <h2>Drifting: controlled oversteer</h2>
+    <p class="lede">A drift is not a loss of control — it is a maintained slide with the front tyres still steering. The skill is managing the rear tyre's grip with throttle while the front points where you want to go.</p>
+
+    <div class="card play">
+      <div class="kicker">Drift sim — arrow keys or WASD, space = handbrake, R = reset</div>
+      <canvas id="driftCanvas" width="900" height="520" style="touch-action:none"></canvas>
+      <div class="grid2" style="grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px">
+        <div><div class="kicker">Speed</div><div style="font-size:22px;font-weight:800"><span id="dSpd">0</span> <span class="unit">km/h</span></div></div>
+        <div><div class="kicker">Slip angle</div><div style="font-size:22px;font-weight:800"><span id="dSlip">0</span>°</div></div>
+        <div><div class="kicker">Drift score</div><div style="font-size:22px;font-weight:800;color:var(--accent)"><span id="dScore">0</span></div></div>
+        <div><div class="kicker">Status</div><div id="dStat" style="font-size:16px;font-weight:700;color:var(--good);padding-top:4px">Gripping</div></div>
+      </div>
+      <p class="muted" style="font-size:13px;margin:12px 0 0">Mobile: tap the canvas for steering buttons. Physics here is a simplified bicycle model — real enough to teach the balance, not a replacement for a sim rig.</p>
+    </div>
+
+    <div class="card">
+      <h3>The four ways to start a drift</h3>
+      <ul>
+        <li><b>Power oversteer.</b> Rear-drive, enough throttle to break the rear tyres loose mid-corner. The purest method and the one that teaches throttle balance.</li>
+        <li><b>Feint / Scandinavian flick.</b> Flick the car one way, then the other, using the weight transfer to unload the rear. Works in front-drive, rear-drive and all-wheel-drive. The basis of rally cornering.</li>
+        <li><b>Clutch kick.</b> Clutch in, rev up, drop it. A shock of torque breaks the rear loose instantly. Harsh on the car, effective.</li>
+        <li><b>Handbrake.</b> Locks the rear wheels, killing their lateral grip immediately. Instant rotation, easy to overdo. The go-to for hairpins and tight junctions in rally.</li>
+      </ul>
+
+      <h3>Holding it — the balance</h3>
+      <p>Once sideways, three things hold the drift: <b>throttle</b> keeps the rear sliding, <b>countersteer</b> points the front wheels down the road, and <b>your eyes</b> target the exit. Too much throttle and you spin; too little and the rear grips and snaps straight. You are constantly trading those two.</p>
+
+      <h3>Ending it</h3>
+      <p>Ease off the throttle and unwind the countersteer together as the car straightens. If you unwind first, the car snaps past straight and you get a slide the other way — the classic drift-chain. If you lift first, you spin. Do both gently, at the same time.</p>
+
+      <h3>Weight transfer is the whole trick</h3>
+      <p>Every drift starts with unloading the rear tyres: brake (load forward), lift (load forward), or flick (load sideways then back). The drift is simply what happens when a light rear axle meets torque. Understanding module 2 is what turns drifting from a party trick into a technique.</p>
+    </div>
+  </section>
+
+  <!-- ============ 8. RALLY ============ -->
+  <section data-title="7 · Rally craft">
+    <span class="tag">Module 7 · Rally</span>
+    <h2>Why rally drivers look like they are crashing</h2>
+    <p class="lede">On loose surfaces the grip circle is small, the surface changes every hundred metres, and the fastest line is the one that keeps momentum. Rally technique is built around those three facts.</p>
+
+    <div class="card">
+      <h3>Rotate early, drive out</h3>
+      <p>On gravel or snow you cannot brake and steer at once — there is not enough grip. So rally drivers rotate the car <i>before</i> the corner using weight transfer, then use the throttle to steer through it. A rally corner is: brake in a straight line, flick, rotate, then power out with the car already pointed at the exit.</p>
+
+      <h3>Left-foot braking</h3>
+      <p>Braking with the left foot while the right stays on the throttle. It does three useful things: it shifts load forward to load the front tyres, it trims speed without lifting (so the turbo stays spooled), and with the diff it can help rotate the car. In modern rally cars the handbrake and left-foot brake are used together constantly.</p>
+
+      <h3>The Scandinavian flick</h3>
+      <ol>
+        <li>Approach with the car positioned to the outside.</li>
+        <li>Turn in one direction, then quickly the other — a short, sharp weight transfer.</li>
+        <li>The rear unloads and steps out; now you are rotated and pointing at the apex.</li>
+        <li>Catch it with countersteer and drive out on the throttle.</li>
+      </ol>
+      <p>Done well it looks like the car is thrown; done badly it is a spin. The flick is a weight-transfer tool, not a steering input — the second turn does the work.</p>
+
+      <h3>Handbrake turn</h3>
+      <p>For hairpins and junctions where you need to change direction in almost no distance. Brake, turn, pull the handbrake to break the rear, then release and drive out. Timing the release is the whole skill: too early and you under-rotate, too late and you stop dead.</p>
+
+      <h3>Reading the road</h3>
+      <ul>
+        <li><b>Camber</b> — a surface tilted toward the corner gives free grip. Tilted away, it takes grip away. Rally drivers aim for the camber, even if it is not the shortest line.</li>
+        <li><b>Surface change</b> — tarmac to gravel at speed changes grip in one wheelbase. Expect the car to move; be ready with a small correction.</li>
+        <li><b>Cutting</b> — using the inside of a corner, including the verge, to straighten the line. Faster, but you risk a puncture, a ditch, or a rock.</li>
+        <li><b>Ruts and standing water</b> — a rut grabs the tyre and steers the car for you; water causes aquaplaning with no warning at all.</li>
+      </ul>
+
+      <h3>Pace notes</h3>
+      <p>A co-driver reads the next corner before the driver can see it. A typical system: <i>"4 left, tightens, 100"</i> means a medium-speed left (1 = hairpin, 6 = flat), which tightens, then 100 metres of straight. Distance, severity, and any modifier (tightens, opens, don't cut, crest, jump) are called in the order they matter. Good crews rehearse the notes at walking pace first — the notes are the difference between fast and fast-and-alive.</p>
+
+      <div class="card play" style="margin-top:20px">
+        <div class="kicker">Pace note drill</div>
+        <p id="pnQ" style="font-weight:600;margin-bottom:14px">Loading…</p>
+        <div id="pnOpts"></div>
+        <p id="pnExp" class="exp"></p>
+        <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+          <button class="act" id="pnNext">Next note</button>
+          <span class="muted" style="font-size:13px">Score: <b id="pnScore" style="color:var(--txt)">0</b> / <b id="pnTotal" style="color:var(--txt)">0</b></span>
+        </div>
+      </div>
+
+      <h3>Momentum vs grip driving</h3>
+      <p>On tarmac you drive the grip circle. On loose surfaces you drive <i>momentum</i>: keep the car moving, keep the revs up, and accept a wider, slidey line because stopping and restarting costs more time than the extra distance. That is the single biggest mental shift from road driving to rally driving.</p>
+    </div>
+  </section>
+
+  <!-- ============ 9. PRACTICE ============ -->
+  <section data-title="8 · Practice plan">
+    <span class="tag">Module 8</span>
+    <h2>A plan that actually builds skill</h2>
+    <p class="lede">Driving skill is built by repeating one thing until it is automatic, then adding the next. Here is an order that works, in a car park, on a skid pan, or in a simulator.</p>
+
+    <div class="card">
+      <h3>Stage 1 — Feel the car (2 sessions)</h3>
+      <ul>
+        <li>Empty car park, dry. Accelerate to 30 km/h and brake to a stop, gently, ten times. Notice the nose dive.</li>
+        <li>Repeat, braking harder each time until you feel ABS. Feel where the limit is.</li>
+        <li>Drive a large circle at 20 km/h, then 30, then 40. Find the speed where it starts to understeer, then back off.</li>
+      </ul>
+
+      <h3>Stage 2 — Weight transfer (2 sessions)</h3>
+      <ul>
+        <li>Figure-of-eight at walking pace, then faster. Feel the load move side to side.</li>
+        <li>Practise smooth brake release: brake hard, and release over two full seconds as you add steering.</li>
+        <li>In a simulator: same drill on a wet track, where everything happens at half the speed.</li>
+      </ul>
+
+      <h3>Stage 3 — Slides (skid pan or sim only)</h3>
+      <ul>
+        <li>Wet skid pan: induce understeer, then fix it by unwinding. Repeat until it is reflex.</li>
+        <li>Induce oversteer with throttle. Countersteer and hold. Expect to spin — that is the lesson.</li>
+        <li>Simulator: run the same corner 20 times. Change one thing at a time — entry speed, brake point, release rate.</li>
+      </ul>
+
+      <h3>Stage 4 — Drift and rally technique</h3>
+      <ul>
+        <li>Simulator first, always. Learn the handbrake turn and the flick where a mistake costs nothing.</li>
+        <li>Then a drift day or rally school, with an instructor, on a closed site.</li>
+        <li>Practise the drift cycle as a loop: initiate → hold → transition → hold. Transitions are where 90% of spins happen.</li>
+      </ul>
+
+      <div class="note"><b>The fastest way to improve.</b> One variable per session. If you change your entry speed, your brake point, and your line at once, you learn nothing about any of them. Pick one, repeat twenty times, write down what happened.</div>
+    </div>
+
+    <div class="card">
+      <h3>Simulator setup that teaches real habits</h3>
+      <ul style="margin-bottom:0">
+        <li>Turn off stability control, ABS and traction control help — you need to feel the mistakes.</li>
+        <li>Use a wheel with force feedback if you can. Steering feel <i>is</i> the information channel.</li>
+        <li>Start on a wet track. Everything happens slowly enough to think.</li>
+        <li>Watch the replay from outside the car. You will see the weight transfer you could not feel.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ 10. QUIZ ============ -->
+  <section data-title="9 · Check yourself">
+    <span class="tag">Quiz</span>
+    <h2>Do you actually get it?</h2>
+    <p class="lede">Ten questions. No score pressure — wrong answers explain themselves.</p>
+    <div class="card" id="quizCard"></div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <button class="act" id="quizReset">Reset quiz</button>
+      <span class="muted">Score: <b id="qScore" style="color:var(--txt)">0</b> / <b id="qTotal" style="color:var(--txt)">0</b></span>
+    </div>
+  </section>
+
+  </main>
+</div>
+
+<footer><div class="wrap">Car Control · a learning resource on vehicle dynamics, drifting and rally technique. Built for practice in safe, closed environments. Drive within the law.</div></footer>
+
+<script>
+/* ---------- navigation ---------- */
+var driftFocus=function(){};
+const sections=[...document.querySelectorAll('main section')];
+const nav=document.getElementById('nav');
+const visited=new Set(JSON.parse(localStorage.getItem('cc_visited')||'[]'));
+sections.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.textContent=s.dataset.title;
+  if(visited.has(i)) b.classList.add('done');
+  b.onclick=()=>go(i);
+  nav.appendChild(b);
+});
+function go(i){
+  sections.forEach((s,j)=>s.classList.toggle('on',i===j));
+  [...nav.children].forEach((b,j)=>b.classList.toggle('on',i===j));
+  visited.add(i); localStorage.setItem('cc_visited',JSON.stringify([...visited]));
+  nav.children[i].classList.add('done');
+  updateProg();
+  window.scrollTo({top:0,behavior:'instant'});
+  location.hash='m'+i;
+  if(i===6) driftFocus();
+}
+function updateProg(){
+  const p=Math.round(visited.size/sections.length*100);
+  document.getElementById('prog').style.width=p+'%';
+  document.getElementById('progpct').textContent=p+'%';
+}
+let start=parseInt((location.hash||'').replace('#m',''))||0;
+if(isNaN(start)) start=0;
+go(start);
+updateProg();
+
+/* ---------- 1. weight transfer ---------- */
+(function(){
+  const c=document.getElementById('wtCanvas'), x=c.getContext('2d');
+  const sL=document.getElementById('wtLong'), sT=document.getElementById('wtLat'), sH=document.getElementById('wtH');
+  function draw(){
+    const ax=+sL.value, ay=+sT.value, h=+sH.value;
+    const W=1300*9.81, L=2.6, T=1.55;
+    const dLong=W*ax*h/L, dLat=W*ay*h/T;
+    const base=W/4;
+    const fl=base-dLong/2+dLat/2, fr=base-dLong/2-dLat/2;
+    const rl=base+dLong/2+dLat/2, rr=base+dLong/2-dLat/2;
+    const tot=fl+fr+rl+rr;
+    document.getElementById('wtLongLbl').textContent=ax.toFixed(2)+' g';
+    document.getElementById('wtLatLbl').textContent=ay.toFixed(2)+' g';
+    document.getElementById('wtHLbl').textContent=h.toFixed(2)+' m';
+    document.getElementById('wtFront').textContent=Math.round((fl+fr)/tot*100)+'%';
+    document.getElementById('wtRear').textContent=Math.round((rl+rr)/tot*100)+'%';
+    const maxW=Math.max(fl,fr,rl,rr);
+    const even=W/4;
+    document.getElementById('wtLoss').textContent=Math.max(0,Math.round((1-(Math.sqrt(fl/even)+Math.sqrt(fr/even)+Math.sqrt(rl/even)+Math.sqrt(rr/even))/4)*100))+'%';
+
+    x.clearRect(0,0,c.width,c.height);
+    // car body (top view)
+    const cx=c.width/2, cy=c.height/2-10, bw=150, bh=260;
+    x.save();
+    x.translate(cx,cy);
+    // shadow
+    x.fillStyle='rgba(0,0,0,.5)'; x.beginPath();
+    x.roundRect(-bw/2+6,-bh/2+8,bw,bh,26); x.fill();
+    x.fillStyle='#1b2536'; x.strokeStyle='#33415a'; x.lineWidth=2;
+    x.beginPath(); x.roundRect(-bw/2,-bh/2,bw,bh,26); x.fill(); x.stroke();
+    // windscreen
+    x.fillStyle='#0d1420'; x.beginPath(); x.roundRect(-bw/2+16,-bh/2+46,bw-32,52,10); x.fill();
+    x.beginPath(); x.roundRect(-bw/2+18,bh/2-92,bw-36,44,10); x.fill();
+    // wheels
+    const wheels=[[-bw/2-9,-bh/2+34,fl,'F L'],[bw/2-19,-bh/2+34,fr,'F R'],
+                  [-bw/2-9,bh/2-70,rl,'R L'],[bw/2-19,bh/2-70,rr,'R R']];
+    wheels.forEach(([wx,wy,w,name])=>{
+      const a=Math.min(1,w/(W/2));
+      x.fillStyle='#0a0d12'; x.beginPath(); x.roundRect(wx,wy,28,64,7); x.fill();
+      x.fillStyle=`rgba(255,77,109,${.35+a*.65})`;
+      const hgt=64*Math.min(1,a);
+      x.beginPath(); x.roundRect(wx,wy+64-hgt,28,hgt,7); x.fill();
+      x.fillStyle='#93a2b8'; x.font='11px ui-monospace,monospace';
+      x.fillText(name,wx-4,wy+80);
+      x.fillStyle='#e8eef6'; x.fillText(Math.round(w/9.81*10)/10+' kg',wx-12,wy-8);
+    });
+    x.restore();
+    // CoG marker
+    x.fillStyle='#ff5c39';
+    x.beginPath(); x.arc(cx,cy+h*8,5,0,7); x.fill();
+    x.fillStyle='#93a2b8'; x.font='11px ui-monospace,monospace';
+    x.fillText('centre of gravity', cx+10, cy+h*8+4);
+    // legend
+    x.fillStyle='#93a2b8'; x.font='12px system-ui';
+    x.fillText('Top view · red = tyre load', 18, 26);
+  }
+  [sL,sT,sH].forEach(s=>s.oninput=draw);
+  draw();
+})();
+
+/* ---------- 2. traction circle ---------- */
+(function(){
+  const c=document.getElementById('tcCanvas'), x=c.getContext('2d');
+  const bS=document.getElementById('tcBrake'), sS=document.getElementById('tcSteer'), mS=document.getElementById('tcMu');
+  function draw(){
+    const b=+bS.value/100, s=+sS.value/100, mu=+mS.value;
+    document.getElementById('tcBLbl').textContent=bS.value+'%';
+    document.getElementById('tcSLbl').textContent=sS.value+'%';
+    document.getElementById('tcMuLbl').textContent=mu.toFixed(2)+' μ';
+    const need=Math.hypot(b,s);
+    const pill=document.getElementById('tcPill'), msg=document.getElementById('tcMsg');
+    if(need<=1){pill.className='pill ok';pill.textContent='Inside the circle';}
+    else {pill.className='pill no';pill.textContent='Outside — sliding';}
+    msg.innerHTML=`Grip used: <b style="color:var(--txt)">${Math.round(need*100)}%</b>. `+
+      (need>1?'You asked for more grip than exists. The tyre slides and the extra input does nothing.':(need>0.92?'Right at the limit — this is where fast drivers live.':'Spare grip in reserve.'));
+
+    x.clearRect(0,0,c.width,c.height);
+    const cx=c.width/2, cy=c.height/2, R=185;
+    // grid
+    x.strokeStyle='#1c2634'; x.lineWidth=1;
+    for(let i=-4;i<=4;i++){const p=i*R/4;
+      x.beginPath();x.moveTo(cx+p,cy-R-20);x.lineTo(cx+p,cy+R+20);x.stroke();
+      x.beginPath();x.moveTo(cx-R-20,cy+p);x.lineTo(cx+R+20,cy+p);x.stroke();}
+    // circle
+    const g=x.createRadialGradient(cx,cy,10,cx,cy,R);
+    g.addColorStop(0,'rgba(55,194,255,.10)');g.addColorStop(1,'rgba(55,194,255,.03)');
+    x.fillStyle=g;x.beginPath();x.arc(cx,cy,R,0,7);x.fill();
+    x.strokeStyle='#37c2ff';x.lineWidth=2;x.beginPath();x.arc(cx,cy,R,0,7);x.stroke();
+    // axes
+    x.strokeStyle='#2b3648';x.lineWidth=1;
+    x.beginPath();x.moveTo(cx,cy-R-14);x.lineTo(cx,cy+R+14);x.stroke();
+    x.beginPath();x.moveTo(cx-R-14,cy);x.lineTo(cx+R+14,cy);x.stroke();
+    x.fillStyle='#93a2b8';x.font='12px system-ui';x.textAlign='center';
+    x.fillText('brake',cx,cy+R+34); x.fillText('accelerate',cx,cy-R-24);
+    x.textAlign='left'; x.fillText('corner',cx+R+18,cy+4);
+    x.save();x.translate(cx-R-18,cy);x.rotate(-Math.PI/2);x.fillText('corner',0,4);x.restore();
+    // demand vector
+    const px=cx + s*R, py=cy - b*R;
+    x.strokeStyle=need>1?'#ff4d6d':'#ff5c39'; x.lineWidth=3;
+    x.beginPath();x.moveTo(cx,cy);x.lineTo(px,py);x.stroke();
+    x.fillStyle=need>1?'#ff4d6d':'#ff5c39';
+    x.beginPath();x.arc(px,py,8,0,7);x.fill();
+    // arc showing the walk
+    x.strokeStyle='rgba(255,92,57,.25)';x.lineWidth=1;
+    x.beginPath();x.arc(cx,cy,R,Math.PI/2,Math.PI/2-Math.min(Math.PI*1.5,Math.atan2(b,s)||0),true);x.stroke();
+  }
+  [bS,sS,mS].forEach(s=>s.oninput=draw);draw();
+})();
+
+/* ---------- 3. braking distance ---------- */
+(function(){
+  const sS=document.getElementById('bdSpeed'), rS=document.getElementById('bdReact'), mS=document.getElementById('bdMu');
+  const surfs=[['Dry tarmac',0.90],['Wet tarmac',0.60],['Gravel',0.45],['Packed snow',0.28],['Ice',0.10]];
+  function calc(v_mph,react,mu){
+    const v=v_mph*0.44704, g=9.81;
+    const think=v*react, brake=v*v/(2*mu*g);
+    return {think,brake,total:think+brake};
+  }
+  function draw(){
+    const v=+sS.value, r=+rS.value, [name,mu]=surfs[+mS.value];
+    document.getElementById('bdSpeedLbl').textContent=v+' mph';
+    document.getElementById('bdReactLbl').textContent=r.toFixed(2)+' s';
+    document.getElementById('bdMuLbl').textContent=name+' ('+mu.toFixed(2)+')';
+    const a=calc(v,r,mu), b=calc(30,r,mu);
+    document.getElementById('bdTotal').textContent=a.total.toFixed(1);
+    document.getElementById('bdThink').textContent=a.think.toFixed(1);
+    document.getElementById('bdBrake').textContent=a.brake.toFixed(1);
+    document.getElementById('bdRef').textContent=b.total.toFixed(1);
+  }
+  [sS,rS,mS].forEach(s=>s.oninput=draw);draw();
+})();
+
+/* ---------- 4. balance ---------- */
+(function(){
+  const c=document.getElementById('usCanvas'), x=c.getContext('2d');
+  const sS=document.getElementById('usSpeed'), rS=document.getElementById('usRad'), bS=document.getElementById('usBal');
+  function draw(){
+    const kmh=+sS.value, R=+rS.value, bal=+bS.value;
+    const v=kmh/3.6, g=9.81;
+    const demand=v*v/(R*g);
+    document.getElementById('usSpeedLbl').textContent=kmh+' km/h';
+    document.getElementById('usRadLbl').textContent=R+' m';
+    document.getElementById('usBalLbl').textContent=bal<-0.15?'Oversteer bias':bal>0.15?'Understeer bias':'Neutral';
+    const muF=1.0, muR=1.0*(1-bal*0.35);
+    const grip=Math.min(muF,muR);
+    const pill=document.getElementById('usPill'), msg=document.getElementById('usMsg');
+    let state,cls;
+    if(demand>grip){ state = muF<muR?'Understeer — running wide':'Oversteer — rear stepping out'; cls='no'; }
+    else if(Math.abs(bal)>0.15){ state = bal>0?'Understeer bias':'Oversteer bias'; cls=demand>grip*0.85?'no':'ok'; }
+    else { state='Neutral'; cls='ok'; }
+    pill.textContent=state; pill.className='pill '+cls;
+    msg.innerHTML=`Lateral demand <b style="color:var(--txt)">${demand.toFixed(2)} g</b> vs available <b style="color:var(--txt)">${grip.toFixed(2)} g</b>. `+
+      (demand>grip?'That corner at that speed is not possible on this surface.':'Corner is possible; balance decides which end slides first.');
+
+    x.clearRect(0,0,c.width,c.height);
+    const cx=c.width/2, cy=c.height/2+20;
+    // road arc
+    x.strokeStyle='#1f2a3a';x.lineWidth=54;x.lineCap='butt';
+    x.beginPath();x.arc(cx,cy+230,R*2.0,Math.PI*1.15,Math.PI*1.85);x.stroke();
+    x.strokeStyle='#2b3648';x.lineWidth=2;x.setLineDash([14,16]);
+    x.beginPath();x.arc(cx,cy+230,R*2.0,Math.PI*1.15,Math.PI*1.85);x.stroke();x.setLineDash([]);
+    // car
+    const px=cx, py=cy;
+    x.save();x.translate(px,py);
+    x.rotate(-0.18+(bal*0.12));
+    x.fillStyle='#1b2536';x.strokeStyle='#3d4f68';x.lineWidth=2;
+    x.beginPath();x.roundRect(-46,-26,92,52,12);x.fill();x.stroke();
+    x.fillStyle='#0d1420';x.beginPath();x.roundRect(-14,-20,30,40,6);x.fill();
+    x.fillStyle=demand>grip?'#ff4d6d':bal>0.15?'#ffc857':'#3ddc84';
+    x.beginPath();x.arc(0,0,5,0,7);x.fill();
+    // arrows
+    const aLen=Math.min(70,demand*60);
+    x.strokeStyle='#37c2ff';x.lineWidth=3;
+    x.beginPath();x.moveTo(0,0);x.lineTo(0,-aLen);x.stroke();
+    x.beginPath();x.moveTo(0,-aLen-8);x.lineTo(-6,-aLen+4);x.lineTo(6,-aLen+4);x.closePath();x.fillStyle='#37c2ff';x.fill();
+    x.restore();
+    x.fillStyle='#93a2b8';x.font='12px system-ui';x.textAlign='center';
+    x.fillText('lateral demand',cx+96,cy-40);x.textAlign='left';
+    // grip bars
+    const bx=24, by=24;
+    x.fillStyle='#93a2b8';x.font='12px system-ui';
+    x.fillText('front grip',bx,by); x.fillText('rear grip',bx,by+52);
+    x.fillStyle='#26303f';x.fillRect(bx,by+8,150,12);x.fillRect(bx,by+60,150,12);
+    x.fillStyle='#37c2ff';x.fillRect(bx,by+8,150*muF/1.3,12);
+    x.fillStyle='#ff5c39';x.fillRect(bx,by+60,150*muR/1.3,12);
+    // demand marker
+    x.fillStyle='#ffc857';
+    const dx=bx+150*Math.min(1,demand/1.3);
+    x.fillRect(dx,by,2,80);
+  }
+  [sS,rS,bS].forEach(s=>s.oninput=draw);draw();
+})();
+
+/* ---------- 5. drift sim ---------- */
+(function(){
+  const c=document.getElementById('driftCanvas'), x=c.getContext('2d');
+  const K={};
+  const spdEl=document.getElementById('dSpd'), slipEl=document.getElementById('dSlip'),
+        scoreEl=document.getElementById('dScore'), statEl=document.getElementById('dStat');
+  const m=1250, Iz=1900, lf=1.25, lr=1.35, g=9.81, hCg=0.55, mu=1.05;
+  let st, score, keys, last, running=false, acc=0;
+
+  function reset(){
+    st={x:0,y:0,psi:0,u:0,v:0,r:0,delta:0,trail:[]};
+    score=0; keepMarks=[];
+  }
+  let keepMarks=[];
+  reset();
+
+  addEventListener('keydown',e=>{
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) {
+      const s=document.querySelectorAll('main section')[6];
+      if(s && s.classList.contains('on')) e.preventDefault();
+    }
+    K[e.key.toLowerCase()]=true;
+  });
+  addEventListener('keyup',e=>{K[e.key.toLowerCase()]=false;});
+
+  // touch buttons on canvas
+  let touchSteer=0, touchThrottle=false;
+  c.addEventListener('pointerdown',e=>{
+    const rect=c.getBoundingClientRect();
+    const px=(e.clientX-rect.left)/rect.width;
+    if(px<0.33) touchSteer=-1; else if(px>0.67) touchSteer=1;
+    else touchThrottle=true;
+    if(!running) start();
+  });
+  c.addEventListener('pointerup',()=>{touchSteer=0;touchThrottle=false;});
+
+  function start(){ if(running) return; running=true; last=performance.now(); requestAnimationFrame(loop); }
+
+  function step(dt){
+    const throttle=(K['arrowup']||K['w']||touchThrottle)?1:0;
+    const brake=(K['arrowdown']||K['s'])?1:0;
+    const steerIn=((K['arrowleft']||K['a'])?-1:0)+((K['arrowright']||K['d'])?1:0)+touchSteer;
+    const hb=(K[' ']||false);
+
+    const maxSteer=0.52/(1+Math.abs(st.u)/16);
+    const target=Math.max(-1,Math.min(1,steerIn))*maxSteer;
+    st.delta+=(target-st.delta)*Math.min(1,dt*9);
+
+    const speed=Math.max(Math.abs(st.u),2);
+    const Fz_static_f=m*g*lr/(lf+lr), Fz_static_r=m*g*lf/(lf+lr);
+    const ax=0; // computed next frame roughly
+    const dFz=m*(st.accPrev||0)*hCg/(lf+lr);
+    let Fzf=Math.max(600,Fz_static_f-dFz), Fzr=Math.max(600,Fz_static_r+dFz);
+    const muR=hb?mu*0.58:mu;
+
+    let alph_f=Math.atan2(st.v+st.r*lf,speed)-st.delta;
+    let alph_r=Math.atan2(st.v-st.r*lr,speed);
+    let Fyf=-15*Fzf*alph_f, Fyr=-15*Fzr*alph_r;
+    const FmaxF=mu*Fzf*0.95, FmaxR=muR*Fzr*0.95;
+    Fyf=Math.max(-FmaxF,Math.min(FmaxF,Fyf));
+    Fyr=Math.max(-FmaxR,Math.min(FmaxR,Fyr));
+
+    // longitudinal
+    let Fxr=throttle*6400*(1-Math.min(1,Math.abs(st.u)/42)*0.55);
+    let Fxf=0;
+    const brakeF=brake*13000;
+    Fxf-=brakeF*0.62; Fxr-=brakeF*0.38;
+    if(hb) Fxr-=2400;
+    // friction ellipse limit
+    const limF=Math.sqrt(Math.max(0,FmaxF*FmaxF-Fyf*Fyf));
+    const limR=Math.sqrt(Math.max(0,FmaxR*FmaxR-Fyr*Fyr));
+    Fxf=Math.max(-limF,Math.min(limF,Fxf));
+    Fxr=Math.max(-limR,Math.min(limR,Fxr));
+
+    const drag=0.5*1.2*0.33*2.2*st.u*Math.abs(st.u)+180*Math.sign(st.u);
+    const sumFx=Fxr+Fxf*Math.cos(st.delta)-Fyf*Math.sin(st.delta)-drag;
+    const sumFy=Fyf*Math.cos(st.delta)+Fyr+Fxf*Math.sin(st.delta);
+    const Mz=lf*(Fyf*Math.cos(st.delta)+Fxf*Math.sin(st.delta))-lr*Fyr;
+
+    const du=sumFx/m+st.v*st.r;
+    const dv=sumFy/m-st.u*st.r;
+    const dr=Mz/Iz;
+    st.u+=du*dt; st.v+=dv*dt; st.r+=dr*dt;
+    st.accPrev=sumFx/m;
+    st.psi+=st.r*dt;
+    st.x+= (st.u*Math.cos(st.psi)-st.v*Math.sin(st.psi))*dt;
+    st.y+= (st.u*Math.sin(st.psi)+st.v*Math.cos(st.psi))*dt;
+
+    if(Math.abs(st.v)>0.4){
+      const rx=st.x-Math.cos(st.psi)*lr, ry=st.y-Math.sin(st.psi)*lr;
+      keepMarks.push({x:rx,y:ry,a:Math.min(.5,Math.abs(st.v)/14)});
+      if(keepMarks.length>900) keepMarks.shift();
+    }
+  }
+
+  const CAR={w:1.86,l:4.3};
+  function draw(){
+    const W=c.width,H=c.height;
+    x.fillStyle='#0a0d12';x.fillRect(0,0,W,H);
+    const scale=9, camx=st.x, camy=st.y;
+    const toS=(wx,wy)=>[W/2+(wx-camx)*scale, H/2+(wy-camy)*scale];
+
+    // grid
+    x.strokeStyle='#141b26';x.lineWidth=1;
+    const gs=10;
+    const x0=Math.floor((camx-W/2/scale)/gs)*gs, y0=Math.floor((camy-H/2/scale)/gs)*gs;
+    for(let i=0;i<W/scale/gs+3;i++){
+      const [px]=toS(x0+i*gs,0); x.beginPath();x.moveTo(px,0);x.lineTo(px,H);x.stroke();
+    }
+    for(let i=0;i<H/scale/gs+3;i++){
+      const [,py]=toS(0,y0+i*gs); x.beginPath();x.moveTo(0,py);x.lineTo(W,py);x.stroke();
+    }
+
+    // cones circle
+    x.fillStyle='#2f3d52';
+    for(let a=0;a<Math.PI*2;a+=Math.PI/18){
+      const [px,py]=toS(45*Math.cos(a),45*Math.sin(a));
+      x.beginPath();x.arc(px,py,3.5,0,7);x.fill();
+    }
+
+    // skid marks
+    keepMarks.forEach(mk=>{
+      const [px,py]=toS(mk.x,mk.y);
+      x.fillStyle=`rgba(255,92,57,${mk.a*0.55})`;
+      x.fillRect(px-1.5,py-1.5,3,3);
+    });
+
+    // car
+    const [cx,cy]=toS(st.x,st.y);
+    x.save();x.translate(cx,cy);x.rotate(st.psi);
+    x.fillStyle='rgba(0,0,0,.55)';
+    x.beginPath();x.roundRect(-CAR.l*scale/2+2,-CAR.w*scale/2+3,CAR.l*scale,CAR.w*scale,8);x.fill();
+    x.fillStyle='#22304a';x.strokeStyle='#4d6a92';x.lineWidth=2;
+    x.beginPath();x.roundRect(-CAR.l*scale/2,-CAR.w*scale/2,CAR.l*scale,CAR.w*scale,8);x.fill();x.stroke();
+    x.fillStyle='#0d1420';
+    x.beginPath();x.roundRect(-4,-CAR.w*scale/2+4,12,CAR.w*scale-8,3);x.fill();
+    // front wheels steer
+    x.fillStyle='#0a0d12';
+    [[lf,-0.78],[lf,0.78],[-lr,-0.78],[-lr,0.78]].forEach(([wx,wy])=>{
+      x.save();x.translate(wx*scale,wy*scale);
+      if(wx>0) x.rotate(st.delta);
+      x.fillRect(-6,-2.4,12,4.8);x.restore();
+    });
+    // heading arrow
+    x.strokeStyle='#37c2ff';x.lineWidth=2;
+    x.beginPath();x.moveTo(0,0);x.lineTo(0,-CAR.l*scale/2-14);x.stroke();
+    x.beginPath();x.moveTo(0,-CAR.l*scale/2-20);x.lineTo(-5,-CAR.l*scale/2-12);x.lineTo(5,-CAR.l*scale/2-12);x.closePath();x.fillStyle='#37c2ff';x.fill();
+    x.restore();
+
+    // hud
+    const speed=Math.hypot(st.u,st.v)*3.6;
+    const beta=Math.atan2(st.v,Math.max(1,Math.abs(st.u)))*180/Math.PI;
+    spdEl.textContent=Math.round(speed);
+    slipEl.textContent=Math.round(Math.abs(beta));
+    scoreEl.textContent=Math.round(score);
+    if(Math.abs(beta)>55){statEl.textContent='Spun';statEl.style.color='#ff4d6d';}
+    else if(Math.abs(beta)>12){statEl.textContent='Drifting';statEl.style.color='#ff5c39';}
+    else if(Math.abs(beta)<=12){statEl.textContent='Gripping';statEl.style.color='#3ddc84';}
+
+    if(speed<3 && Math.abs(beta)<5){
+      x.fillStyle='rgba(147,162,184,.85)';x.font='13px system-ui';x.textAlign='center';
+      x.fillText('Click here or press a key to start driving',W/2,H-18);x.textAlign='left';
+    }
+  }
+
+  function loop(t){
+    const dt=Math.min(0.05,(t-last)/1000); last=t;
+    acc+=dt;
+    const h=1/120;
+    let guard=0;
+    while(acc>=h && guard++<8){
+      step(h); acc-=h;
+      const beta=Math.abs(Math.atan2(st.v,Math.max(1,Math.abs(st.u)))*180/Math.PI);
+      if(beta>12 && Math.hypot(st.u,st.v)>6) score+=beta*h*1.2;
+    }
+    draw();
+    if(running) requestAnimationFrame(loop);
+  }
+  reset();
+  draw();
+  driftFocus=()=>{ if(!running) start(); };
+  if(sections[6] && sections[6].classList.contains('on')) driftFocus();
+  c.addEventListener('pointerdown',()=>{ if(!running) start(); });
+  document.getElementById('nav').addEventListener('click',()=>{});
+})();
+
+/* ---------- 6. pace notes ---------- */
+(function(){
+  const notes=[
+    {q:'"4 left, tightens, 100" — what happens after the corner?',
+     o:['100 metres of straight','100 metres of hairpin','Corner tightens for 100 m'],a:0,
+     e:'The number after the corner severity is a distance in metres to the next feature — here, a straight.'},
+    {q:'"6 right" — how fast is that corner?',
+     o:['Very slow, near-hairpin','Flat out or nearly so','Medium speed'],a:1,
+     e:'On a 1–6 scale, 6 is the fastest grade. 1 is a hairpin.'},
+    {q:'What does "don\'t cut" mean?',
+     o:['Stay off the inside verge — something is there','Brake later than normal','Take the corner in a higher gear'],a:0,
+     e:'It warns that cutting the inside would hit a rock, ditch or log.'},
+    {q:'Why does a crew rehearse notes at walking pace?',
+     o:['To memorise the order without driving fast','Because the car is not ready','To measure the road width'],a:0,
+     e:'Walking the stage builds the note-to-corner link before speed is added.'},
+    {q:'"Crest into 3 left" — what is the danger?',
+     o:['The car goes light and may not turn at the top','The engine will stall','The brakes will overheat'],a:0,
+     e:'Over a crest the car unloads, so steering and braking both lose authority right where you need them.'},
+    {q:'What is the point of calling "tightens"?',
+     o:['To tell the driver the corner is slower than it looks on entry','To tell the driver to change gear','To mark the apex'],a:0,
+     e:'It stops the driver entering at a speed the exit cannot support.'}
+  ];
+  let i=0, score=0, total=0, answered=false;
+  const qEl=document.getElementById('pnQ'), oEl=document.getElementById('pnOpts'), eEl=document.getElementById('pnExp');
+  function render(){
+    answered=false;
+    const n=notes[i%notes.length];
+    qEl.textContent=n.q; eEl.textContent=''; oEl.innerHTML='';
+    n.o.forEach((t,k)=>{
+      const b=document.createElement('button');b.className='opt';b.textContent=t;
+      b.onclick=()=>{
+        if(answered) return; answered=true; total++;
+        [...oEl.children].forEach((c,j)=>{c.disabled=true; if(j===n.a)c.classList.add('right');});
+        if(k!==n.a) b.classList.add('wrong'); else score++;
+        eEl.textContent=n.e;
+        document.getElementById('pnScore').textContent=score;
+        document.getElementById('pnTotal').textContent=total;
+      };
+      oEl.appendChild(b);
+    });
+  }
+  document.getElementById('pnNext').onclick=()=>{i++;render();};
+  render();
+})();
+
+/* ---------- 7. quiz ---------- */
+(function(){
+  const QS=[
+    {q:'You are braking hard and the car will not turn. What is the correct first response?',
+     o:['Turn the wheel more','Release some brake pressure','Pull the handbrake'],a:1,
+     e:'The front tyres are already at their limit. Freeing grip from braking gives the front wheels something to steer with.'},
+    {q:'Which tyre carries the most load under hard braking while turning right?',
+     o:['Front left (outside)','Front right (inside)','Rear right'],a:0,
+     e:'Braking shifts load forward; the corner shifts it to the outside. Front outside gets both.'},
+    {q:'Why does doubling the load on a tyre not double its grip?',
+     o:['Because of load sensitivity','Because of tyre pressure','Because of the differential'],a:0,
+     e:'Grip rises with load at a diminishing rate. That is why weight transfer costs total grip.'},
+    {q:'Peak grip happens at…',
+     o:['Zero slip angle','A small slip angle, roughly 6–10°','A slip angle above 30°'],a:1,
+     e:'Tyres need some slip to develop lateral force. Past the peak, grip falls away.'},
+    {q:'What is trail braking?',
+     o:['Braking with the handbrake into a corner','Bleeding brake pressure off as steering lock builds','Braking in a straight line only'],a:1,
+     e:'You walk around the edge of the friction circle from pure braking to pure cornering.'},
+    {q:'The rear steps out. What do you do with the steering?',
+     o:['Countersteer into the slide','Add more lock the same way','Straighten the wheel'],a:0,
+     e:'Point the front wheels where you want to go. Then unwind as the car comes back.'},
+    {q:'Why do rally drivers rotate the car before the corner?',
+     o:['To look impressive','Because loose surfaces give too little grip to brake and steer together','To cool the brakes'],a:1,
+     e:'With a small grip circle, you separate the jobs: brake straight, rotate, then drive out.'},
+    {q:'What does a Scandinavian flick actually use?',
+     o:['Weight transfer to unload the rear','The handbrake only','Maximum engine torque'],a:0,
+     e:'The flick is a weight-transfer tool. The second steering input is what breaks the rear loose.'},
+    {q:'A locked wheel gives roughly what share of peak grip?',
+     o:['100%','70–80%','40%'],a:1,
+     e:'Locking costs grip and all steering. On gravel or snow it can be different — a wedge of material builds up.'},
+    {q:'When ending a drift, what is the mistake that causes a slide the other way?',
+     o:['Unwinding the countersteer before lifting','Lifting and unwinding together','Staying on the throttle'],a:0,
+     e:'Unwind too early and the car snaps past straight. Lift and unwind together, gently.'}
+  ];
+  const card=document.getElementById('quizCard');
+  let score=0,total=0;
+  function render(){
+    card.innerHTML='';score=0;total=0;
+    document.getElementById('qScore').textContent=0;
+    document.getElementById('qTotal').textContent=0;
+    QS.forEach((item,qi)=>{
+      const d=document.createElement('div');d.className='q';
+      const p=document.createElement('p');p.textContent=(qi+1)+'. '+item.q;d.appendChild(p);
+      const exp=document.createElement('p');exp.className='exp';
+      let done=false;
+      item.o.forEach((t,k)=>{
+        const b=document.createElement('button');b.className='opt';b.textContent=t;
+        b.onclick=()=>{
+          if(done)return;done=true;total++;
+          [...d.querySelectorAll('.opt')].forEach((c,j)=>{c.disabled=true;if(j===item.a)c.classList.add('right');});
+          if(k!==item.a)b.classList.add('wrong'); else score++;
+          exp.textContent=item.e;
+          document.getElementById('qScore').textContent=score;
+          document.getElementById('qTotal').textContent=total;
+        };
+        d.appendChild(b);
+      });
+      d.appendChild(exp);card.appendChild(d);
+    });
+  }
+  document.getElementById('quizReset').onclick=render;
+  render();
+})();
+</script>
+</body>
+</html>
