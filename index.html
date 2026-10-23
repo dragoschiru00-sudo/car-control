@@ -28,6 +28,9 @@ a{color:var(--accent2)}
   border-bottom:1px solid var(--line);backdrop-filter:blur(10px)}
 .top .wrap{display:flex;align-items:center;gap:16px;height:60px}
 .brand{font-weight:800;letter-spacing:.14em;font-size:12px;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+#mnav{display:none;background:#1b2230;color:var(--txt);border:1px solid #33415a;border-radius:9px;
+  padding:8px 10px;font:inherit;font-size:12.5px;max-width:52vw}
+@media(max-width:820px){.brand{display:none}#mnav{display:block}}
 .bar{flex:1;height:5px;background:#222b38;border-radius:99px;overflow:hidden}
 .bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .4s}
 .pct{font-variant-numeric:tabular-nums;font-size:12px;color:var(--dim);min-width:38px;text-align:right}
@@ -108,6 +111,7 @@ footer{border-top:1px solid var(--line);color:var(--dim);font-size:12.5px;paddin
 <div class="top">
   <div class="wrap">
     <div class="brand">Car Control</div>
+    <select id="mnav" aria-label="Jump to module"></select>
     <div class="bar"><i id="prog"></i></div>
     <div class="pct" id="progpct">0%</div>
   </div>
@@ -511,6 +515,7 @@ footer{border-top:1px solid var(--line);color:var(--dim);font-size:12.5px;paddin
 var driftFocus=function(){};
 const sections=[...document.querySelectorAll('main section')];
 const nav=document.getElementById('nav');
+const mnav=document.getElementById('mnav');
 const visited=new Set(JSON.parse(localStorage.getItem('cc_visited')||'[]'));
 sections.forEach((s,i)=>{
   const b=document.createElement('button');
@@ -518,12 +523,32 @@ sections.forEach((s,i)=>{
   if(visited.has(i)) b.classList.add('done');
   b.onclick=()=>go(i);
   nav.appendChild(b);
+  const o=document.createElement('option');
+  o.value=i; o.textContent=(i+1)+'. '+s.dataset.title.replace(/^\d+\s·\s/,'');
+  mnav.appendChild(o);
+});
+mnav.onchange=()=>go(+mnav.value);
+/* prev / next controls at the end of every module */
+sections.forEach((s,i)=>{
+  const d=document.createElement('div');
+  d.style.cssText='display:flex;gap:12px;justify-content:space-between;margin-top:28px;padding-top:22px;border-top:1px solid #26303f';
+  const prev=document.createElement('button');
+  prev.className='act ghost'; prev.textContent='← Previous';
+  prev.disabled=i===0; prev.style.opacity=i===0?'.35':'1';
+  prev.onclick=()=>{if(i>0)go(i-1);};
+  const next=document.createElement('button');
+  next.className='act';
+  next.textContent=i===sections.length-1?'Back to start':'Next: '+(sections[i+1].dataset.title.replace(/^\d+\s·\s/,''))+' →';
+  next.onclick=()=>go(i===sections.length-1?0:i+1);
+  d.appendChild(prev); d.appendChild(next);
+  s.appendChild(d);
 });
 function go(i){
   sections.forEach((s,j)=>s.classList.toggle('on',i===j));
   [...nav.children].forEach((b,j)=>b.classList.toggle('on',i===j));
   visited.add(i); localStorage.setItem('cc_visited',JSON.stringify([...visited]));
   nav.children[i].classList.add('done');
+  mnav.value=i;
   updateProg();
   window.scrollTo({top:0,behavior:'instant'});
   location.hash='m'+i;
