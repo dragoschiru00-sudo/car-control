@@ -32,3 +32,19 @@ without it.
 To use it from a phone, expose port 8765 with a tunnel, e.g.
 `cloudflared tunnel --url http://127.0.0.1:8765`.
 
+## Hosted on the Oracle VM (primary)
+
+Everything runs on the VM (132.145.17.93), so the PC can be off:
+
+- `ollama.service` — Ollama with `llama3.2:3b`
+- `carcontrol.service` — `/opt/carcontrol/serve.py` on port 80 (rate limited: 30 questions/hour per IP, one at a time)
+- `cctunnel.service` — cloudflared quick tunnel to a public HTTPS URL
+
+Public URL is the trycloudflare one printed by `sudo journalctl -u cctunnel | grep trycloudflare`.
+
+Update the site: `scp index.html ubuntu@132.145.17.93:/tmp/ && ssh ... 'sudo cp /tmp/index.html /opt/carcontrol/'`
+(owned by root; `systemctl restart carcontrol`).
+
+Quick tunnel URLs change when the service restarts. For a permanent hostname either add
+an OCI Security List rule for TCP 80 (then http://132.145.17.93/ works directly) or use a
+named Cloudflare tunnel with a domain.

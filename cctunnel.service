@@ -1,0 +1,15 @@
+[Unit]
+Description=Cloudflare quick tunnel for carcontrol
+After=network-online.target carcontrol.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cloudflared tunnel --url http://127.0.0.1:80 --no-autoupdate
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

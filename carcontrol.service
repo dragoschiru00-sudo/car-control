@@ -1,0 +1,16 @@
+[Unit]
+Description=Car Control site + Ollama proxy
+After=network.target ollama.service
+Wants=ollama.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/carcontrol
+ExecStart=/usr/bin/python3 /opt/carcontrol/serve.py 0.0.0.0 80
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

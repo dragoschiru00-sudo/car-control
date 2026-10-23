@@ -18,12 +18,41 @@ Endpoints:
 import json
 import os
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OLLAMA = os.environ.get("OLLAMA_HOST_URL", "http://127.0.0.1:11434")
+MAX_BODY = 100_000
+PER_HOUR = int(os.environ.get("RATE_PER_HOUR", "30"))
+
+# crude but effective abuse cap for a publicly exposed box
+_lock = threading.Lock()
+_hits = {}      # ip -> [timestamps]
+_inflight = {}  # ip -> count
+
+
+def _allowed(ip):
+    now = time.time()
+    with _lock:
+        if _inflight.get(ip, 0) >= 1:
+            return False, "one question at a time"
+        hits = [t for t in _hits.get(ip, []) if now - t < 3600]
+        if len(hits) >= PER_HOUR:
+            return False, "hourly limit reached"
+        hits.append(now)
+        _hits[ip] = hits
+        _inflight[ip] = _inflight.get(ip, 0) + 1
+    return True, ""
+
+
+def _done(ip):
+    with _lock:
+        _inflight[ip] = max(0, _inflight.get(ip, 1) - 1)
+
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -67,6 +96,20 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(404)
             return
         length = int(self.headers.get("Content-Length") or 0)
+        if length > MAX_BODY:
+            self.send_error(413, "too large")
+            return
+        ip = self.client_address[0]
+        ok, why = _allowed(ip)
+        if not ok:
+            body = json.dumps({"error": why}).encode()
+            self.send_response(429)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self._cors()
+            self.end_headers()
+            self.wfile.write(body)
+            return
         payload = self.rfile.read(length) if length else b"{}"
         req = urllib.request.Request(
             OLLAMA + "/api/chat",
@@ -77,6 +120,7 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             upstream = urllib.request.urlopen(req, timeout=300)
         except urllib.error.HTTPError as e:
+            _done(ip)
             body = e.read()
             self.send_response(e.code)
             self.send_header("Content-Type", "application/json")
@@ -86,6 +130,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.wfile.write(body)
             return
         except Exception as e:
+            _done(ip)
             body = json.dumps({"error": str(e)}).encode()
             self.send_response(502)
             self.send_header("Content-Type", "application/json")
@@ -111,6 +156,7 @@ class Handler(SimpleHTTPRequestHandler):
             pass
         finally:
             upstream.close()
+            _done(ip)
 
 
 def main():
