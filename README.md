@@ -13,3 +13,22 @@ Interactive modules:
 - Pace-note drill and 10-question quiz
 
 All physics is simplified and intended for teaching feel, not engineering.
+
+## Ask-the-tutor (Ollama)
+
+The floating **Ask the tutor** button answers questions about the material using a
+local model. A public HTTPS page cannot call `http://localhost:11434`, so run the
+bundled host:
+
+```
+ollama serve
+python serve.py          # http://localhost:8765
+```
+
+`serve.py` serves the site and proxies `/api/chat` to Ollama (streaming NDJSON).
+Open the page through `serve.py` and the tutor works; the static site keeps working
+without it.
+
+To use it from a phone, expose port 8765 with a tunnel, e.g.
+`cloudflared tunnel --url http://127.0.0.1:8765`.
+

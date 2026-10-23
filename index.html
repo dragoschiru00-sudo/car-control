@@ -104,6 +104,41 @@ button.ghost{background:#1d2634;color:var(--txt);border:1px solid #33415a}
 .opt:disabled{cursor:default}
 .exp{font-size:13.5px;color:var(--dim);margin-top:8px;padding-left:2px}
 footer{border-top:1px solid var(--line);color:var(--dim);font-size:12.5px;padding:26px 0 60px}
+
+/* ---------- tutor chat ---------- */
+#chatFab{position:fixed;right:20px;bottom:20px;z-index:80;display:flex;align-items:center;gap:9px;
+  background:linear-gradient(135deg,#ff5c39,#ff8a3d);color:#180a06;border:0;border-radius:99px;
+  padding:14px 20px;font:800 14px/1 inherit;cursor:pointer;box-shadow:0 10px 30px rgba(255,92,57,.35)}
+#chatFab:hover{filter:brightness(1.07)}
+#chatFab span.dot{width:8px;height:8px;border-radius:50%;background:#7a2b12}
+#chatFab.live span.dot{background:#0a6b34;box-shadow:0 0 0 3px rgba(10,107,52,.25)}
+
+#chatPanel{position:fixed;right:20px;bottom:88px;z-index:81;width:390px;max-width:calc(100vw - 32px);
+  height:min(620px,calc(100vh - 120px));background:#0f141c;border:1px solid #2c3a4e;border-radius:18px;
+  display:none;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+#chatPanel.open{display:flex}
+#chatPanel header{display:flex;align-items:center;gap:9px;padding:13px 14px;border-bottom:1px solid #22303f;background:#131a24}
+#chatPanel header b{font-size:14px}
+#chatPanel header .st{font-size:11px;color:var(--dim)}
+#chatPanel header .st.ok{color:var(--good)}
+#chatPanel header .st.no{color:var(--bad)}
+#chatPanel header button{margin-left:auto;background:none;border:0;color:var(--dim);font-size:22px;cursor:pointer;line-height:1;padding:0 4px}
+#chatLog{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:88%;padding:10px 13px;border-radius:13px;font-size:14px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word}
+.msg.u{align-self:flex-end;background:#22304a;border:1px solid #35486a}
+.msg.a{align-self:flex-start;background:#161d28;border:1px solid #26303f}
+.msg.sys{align-self:stretch;max-width:100%;background:#1e1710;border:1px solid #4a3a20;color:#e6c99a;font-size:12.5px}
+.msg.a p{margin:0 0 .55em}.msg.a p:last-child{margin:0}
+#chatForm{display:flex;gap:8px;padding:11px;border-top:1px solid #22303f;background:#121821}
+#chatIn{flex:1;resize:none;height:44px;max-height:120px;background:#0b1119;border:1px solid #2b394c;border-radius:11px;
+  color:var(--txt);padding:11px 12px;font:inherit;font-size:14px;outline:none}
+#chatIn:focus{border-color:#4a6486}
+#chatSend{background:var(--accent);border:0;border-radius:11px;width:46px;font-size:17px;color:#180a06;cursor:pointer;font-weight:800}
+#chatSend:disabled{opacity:.4;cursor:default}
+@media(max-width:560px){
+  #chatPanel{right:8px;left:8px;bottom:80px;width:auto;height:calc(100vh - 100px)}
+  #chatFab{right:12px;bottom:12px;padding:12px 16px}
+}
 </style>
 </head>
 <body>
@@ -1051,6 +1086,139 @@ updateProg();
   }
   document.getElementById('quizReset').onclick=render;
   render();
+})();
+</script>
+<button id="chatFab" aria-label="Ask the tutor"><span class="dot"></span>Ask the tutor</button>
+
+<div id="chatPanel" role="dialog" aria-label="Tutor chat">
+  <header>
+    <b>Ask the tutor</b>
+    <span class="st" id="chatStatus">checking…</span>
+    <button id="chatClose" aria-label="Close">×</button>
+  </header>
+  <div id="chatLog"></div>
+  <form id="chatForm">
+    <textarea id="chatIn" placeholder="Why does my car understeer on wet roads?" rows="1"></textarea>
+    <button id="chatSend" type="submit" aria-label="Send">↑</button>
+  </form>
+</div>
+
+<script>
+/* ---------- Ollama tutor ---------- */
+(function(){
+  const fab=document.getElementById('chatFab'), panel=document.getElementById('chatPanel');
+  const log=document.getElementById('chatLog'), form=document.getElementById('chatForm');
+  const input=document.getElementById('chatIn'), send=document.getElementById('chatSend');
+  const statusEl=document.getElementById('chatStatus');
+  let endpoint=null, model=null, history=[], busy=false;
+
+  const SYS=`You are a driving instructor answering questions about vehicle dynamics for a student reading an interactive learning page.
+Answer in plain English, short and concrete: 2-5 sentences, no preamble, no lists unless asked.
+Use these facts as ground truth:
+- Grip comes from load on the tyre; grip rises with load but with diminishing returns (load sensitivity), so weight transfer costs total grip.
+- Peak grip happens at a small slip angle (~6-10 degrees), not at zero.
+- The friction circle: braking and cornering share one grip budget. 100% brake leaves 0% for steering.
+- Braking: threshold braking at the limit, progressive release, trail braking = bleeding brake off as steering builds.
+- Understeer = front tyres past their limit; fix by reducing demand (less lock, less brake), not adding lock.
+- Oversteer = rear past its limit; fix with countersteer and steady throttle, unwind as the car comes back.
+- Drift = controlled oversteer: initiate with power, feint/flick, clutch kick or handbrake; hold with throttle + countersteer.
+- Rally: small grip circle, rotate the car before the corner, drive out on throttle; left-foot braking, Scandinavian flick, handbrake turn, pace notes.
+If the question is outside driving/cars, say so in one line.`;
+
+  const KB=''; // page text is appended per-question from the active module
+
+  function sysFor(){
+    const active=document.querySelector('main section.on');
+    const txt=active?active.innerText.replace(/\s+/g,' ').slice(0,1800):'';
+    return SYS+(txt?'\n\nCurrent module the student is reading:\n'+txt:'');
+  }
+
+  function add(role,text){
+    const d=document.createElement('div');
+    d.className='msg '+(role==='user'?'u':role==='sys'?'sys':'a');
+    d.textContent=text; log.appendChild(d); log.scrollTop=log.scrollHeight; return d;
+  }
+
+  async function detect(){
+    statusEl.textContent='checking…'; statusEl.className='st';
+    // same-origin proxy (serve.py)
+    try{
+      const r=await fetch('/api/status',{cache:'no-store'});
+      if(r.ok){const j=await r.json();
+        if(j.ok&&j.models&&j.models.length){ endpoint='/api/chat'; model=j.models[0]; ok(); return; }}
+    }catch(e){}
+    // direct Ollama (works only from localhost / file://)
+    try{
+      const r=await fetch('http://localhost:11434/api/tags',{cache:'no-store'});
+      if(r.ok){const j=await r.json(); const ms=(j.models||[]).map(m=>m.name);
+        if(ms.length){ endpoint='http://localhost:11434/api/chat'; model=ms[0]; ok(); return; }}
+    }catch(e){}
+    endpoint=null; statusEl.textContent='offline'; statusEl.className='st no';
+  }
+  function ok(){ statusEl.textContent=(model||'ollama').split(':')[0]+' · ready'; statusEl.className='st ok'; fab.classList.add('live'); }
+
+  function offlineHelp(){
+    add('sys','Ollama is not reachable from this page.\n\n'+
+      'This site is served over the internet (https), so the browser blocks calls to your PC at http://localhost:11434. Run the local host instead:\n\n'+
+      '  1. ollama serve\n'+
+      '  2. python C:\\\\Users\\\\dgc\\\\driving-dynamics\\\\serve.py\n'+
+      '  3. open http://localhost:8765\n\n'+
+      'Then this panel works. The static pages and games work either way.');
+  }
+
+  async function ask(q){
+    if(busy) return;
+    busy=true; send.disabled=true;
+    add('user',q);
+    const out=add('assistant',''); out.textContent='…';
+    let acc='';
+    try{
+      const res=await fetch(endpoint,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({model:model,messages:[{role:'system',content:sysFor()},...history,{role:'user',content:q}],stream:true})
+      });
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+      while(true){
+        const {value,done}=await reader.read(); if(done) break;
+        buf+=dec.decode(value,{stream:true});
+        let i;
+        while((i=buf.indexOf('\n'))>=0){
+          const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
+          if(!line) continue;
+          try{ const j=JSON.parse(line); if(j.message&&j.message.content){acc+=j.message.content; out.textContent=acc;} }catch(e){}
+        }
+      }
+      if(!acc){ out.textContent='(no answer — model returned nothing)'; }
+      history.push({role:'user',content:q},{role:'assistant',content:acc});
+      if(history.length>10) history=history.slice(-10);
+    }catch(err){
+      out.textContent='Error: '+err.message+'. Check that ollama serve and serve.py are running.';
+    }finally{ busy=false; send.disabled=false; log.scrollTop=log.scrollHeight; input.focus(); }
+  }
+
+  fab.onclick=async()=>{
+    panel.classList.toggle('open');
+    if(panel.classList.contains('open')){
+      if(!endpoint) await detect();
+      if(!endpoint && !log.childElementCount) offlineHelp();
+      input.focus();
+    }
+  };
+  document.getElementById('chatClose').onclick=()=>panel.classList.remove('open');
+  form.onsubmit=e=>{
+    e.preventDefault();
+    const q=input.value.trim(); if(!q) return;
+    input.value=''; input.style.height='44px';
+    if(!endpoint){ offlineHelp(); return; }
+    ask(q);
+  };
+  input.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault(); form.requestSubmit();}
+  });
+  input.addEventListener('input',()=>{ input.style.height='44px'; input.style.height=Math.min(120,input.scrollHeight)+'px'; });
+  detect();
 })();
 </script>
 </body>
